@@ -1,0 +1,53 @@
+//@version=5
+indicator("Trend Sentiment + Arrows (Swiss Knife Mod)", overlay=true, max_labels_count=500)
+
+// === Existing Engine: Use your calculation results ===
+// For simplicity, let's aggregate your big logic (Swiss Knife engine):
+// We'll treat your multi-timeframe signals as "scores"
+dc   = request.security(syminfo.tickerid, "D", close)   // placeholder: daily score from your engine
+d4h  = request.security(syminfo.tickerid, "240", close) // placeholder: 4h score
+d1h  = request.security(syminfo.tickerid, "60", close)  // placeholder: 1h score
+d15m = request.security(syminfo.tickerid, "15", close)  // placeholder: 15m score
+
+// === Trend Classification ===
+trendScore = ta.ema(close, 10) - ta.ema(close, 20)    // <--- simplified hook; replace with your score
+strongTrend = math.abs(trendScore) > ta.atr(14)       // strength check
+
+trendState = trendScore > 0 and strongTrend ? 2 :      // Strong Uptrend
+             trendScore > 0 ? 1 :                      // Uptrend
+             trendScore < 0 and strongTrend ? -2 :     // Strong Downtrend
+             trendScore < 0 ? -1 :                     // Downtrend
+             0                                         // Neutral
+
+// === Candle Coloring ===
+barcolor(trendState == 2  ? color.lime       :trendState == 1  ? color.green      :trendState == 0  ? color.blue       :trendState == -1 ? color.maroon     : color.red)
+
+// === Arrows ===
+longSignal  = ta.crossover(trendScore, 0)
+shortSignal = ta.crossunder(trendScore, 0)
+
+plotshape(longSignal,  title="Long",  text="▲", style=shape.labelup,   location=location.belowbar, size=size.small, color=color.green)
+plotshape(shortSignal, title="Short", text="▼", style=shape.labeldown, location=location.abovebar, size=size.small, color=color.red)
+
+// Optional neutral marker
+plotshape(trendState == 0, title="Neutral", text="↔", style=shape.labeldown, location=location.bottom, color=color.blue, size=size.tiny)
+
+// === Top‑Right Label ===
+currentState = trendState == 2  ? "Strong Uptrend" :
+               trendState == 1  ? "Uptrend" :
+               trendState == 0  ? "Neutral" :
+               trendState == -1 ? "Downtrend" :
+               "Strong Downtrend"
+
+var label stateLabel = na
+if barstate.islast
+    label.delete(stateLabel)
+    stateLabel := label.new(bar_index, high + ta.atr(14), text=currentState,style=label.style_label_right, textcolor=color.white, color=color.gray, size=size.normal)
+
+// === Multi‑Timeframe Confirmation Label ===
+aligned = (dc > 0) and (d4h > 0) and (d1h > 0)
+bearish = (dc < 0) and (d4h < 0) and (d1h < 0)
+summary = aligned ? "Aligned Bullish (D,4H,1H)" : bearish ? "Aligned Bearish (D,4H,1H)" : "Mixed / Neutral"
+
+if barstate.islast
+    label.new(bar_index, high + 2*ta.atr(14), text="MTF: " + summary,style=label.style_label_right, textcolor=color.yellow, color=color.black, size=size.small)
